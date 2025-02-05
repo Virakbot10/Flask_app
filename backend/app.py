@@ -1,105 +1,125 @@
 import requests
-from flask import Flask, redirect, url_for, session, request, render_template
+from flask import Flask, redirect, url_for, session, request, jsonify, render_template
 import logging
 from urllib.parse import urlencode
+from flask_cors import CORS
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = '123456'
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-seceret')
+CORS(app, supports_credentials=True, origins=os.getenv('CORS_ORIGINS', 'http://localhost:5173'))
 
 logging.basicConfig(level=logging.DEBUG) # enable logging
 
-keycloak_server_url = 'http://localhost:8080/'
-realm_name = 'myrealm'
-client_id = 'flask_app'
-client_secret = '1HFXRLeZfNxBWJYT9lLG3IS9JukaxT1I'
-
-@app.route('/')
-def index():
-    if 'user' in session:
-        return render_template('index.html', user=session['user'])
-    else:
-        return redirect(url_for('login'))
+KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', 'http://localhost:8080/')
+REALM = os.getenv('KEYCLOAK_REALM', 'myrealm')
+CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'flask-app')
+CLIENT_SECRET = os.getenv('KEYCLOAK_CLIENT_SECRE','1HFXRLeZfNxBWJYT9lLG3IS9JukaxT1I')
     
-@app.route('/login')
+@app.route('/api/login')
 def login():
-    authorize_url = f'{keycloak_server_url}/realms/{realm_name}/protocol/openid-connect/auth'
-    redirect_uri = 'http://localhost:5000/callback'
+    auth_url = f'{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/auth'
     params = {
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
+        'client_id': CLIENT_ID,
+        'redirect_uri': 'http://localhost:5000/api/callback',
         'response_type': 'code',
         'scope': 'openid profile email'
     }
-    query = urlencode(params)
-    return redirect(f"{authorize_url}?{query}")  # Use encoded query
+    return redirect(f"{auth_url}?{urlencode(params)}")
 
-@app.route('/callback')
+@app.route('/api/callback')
 def callback():
     code = request.args.get('code')
 
     logging.debug(f'Code: {code}')
+    if not code:
+        return jsonify({'error': 'Missing authorization code'}), 400
     
-    token_endpoint = f'{keycloak_server_url}/realms/{realm_name}/protocol/openid-connect/token'
-    payload = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': 'http://localhost:5000/callback',
-        'client_id': client_id,
-        'client_secret': client_secret
+    token_url = f'{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/token'
+        
+    try:
+        # Exchange authorization code for tokens
+        response = requests.post(token_url, data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'client_id': CLIENT_ID,
+            'client_secret': CLIENT_SECRET,
+            'redirect_uri': 'http://localhost:5000/api/callback'
+        })
+        response.raise_for_status()
+        tokens = response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Token request failed: {str(e)}")
+        return jsonify({'error': 'Authentication failed'}), 401
+    except ValueError:
+        logging.error("Invalid JSON response from Keycloak")
+        return jsonify({'error': 'Authentication failed'}), 401
+
+    if 'access_token' not in tokens:
+        logging.error("Access token missing in response")
+        return jsonify({'error': 'Authentication failed'}), 401
+
+    # Store tokens in session
+    session.update({
+        'access_token': tokens['access_token'],
+        'refresh_token': tokens.get('refresh_token', None),  # Safe .get() usage
+        'id_token': tokens.get('id_token', None)
+    })
+
+    # Get user info
+    try:
+        userinfo_response = requests.get(
+            f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/userinfo",
+            headers={'Authorization': f'Bearer {session["access_token"]}'}
+        )
+        userinfo_response.raise_for_status()
+        user_info = userinfo_response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Userinfo request failed: {str(e)}")
+        return jsonify({'error': 'Failed to fetch user info'}), 401
+
+    # Store user info in session
+    session['user'] = {
+        'username': user_info.get('preferred_username'),
+        'email': user_info.get('email')
     }
 
-    response = requests.post(token_endpoint, data=payload)
-    token_data = response.json()
+    return redirect(os.getenv('FRONTEND_URL', 'http://localhost:5173'))
 
-    if 'access_token' in token_data:
-        userinfo_endpoint = f'{keycloak_server_url}/realms/{realm_name}/protocol/openid-connect/userinfo'
-        userinfo_response = requests.get(userinfo_endpoint, headers={'Authorization': f'Bearer {token_data["access_token"]}'})
-        user_info = userinfo_response.json()
+@app.route('/api/user')
+def get_user():
+    """Get current user info"""
+    if 'user' not in session:
+        return jsonify({'authenticated': False}), 200
+    
+    return jsonify({
+        'authenticated': True,
+        'username': session['user'].get('username'),
+        'email': session['user'].get('email')
+    })
 
-        session['user'] = {
-            'id_token': token_data.get('id_token'),
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'username': user_info.get('preferred_username'),
-            'email': user_info.get('email')
-        }
-
-        logging.debug("User logged in successfully")
-        return redirect(url_for('index'))
-    else:
-        logging.error("Failed to fetch tokens.")
-        return 'Failed to fetch tokens.'
-
-@app.route('/logout')
+@app.route('/api/logout')
 def logout():
     logging.debug('Attempting to log out user.')
 
-    try:
-        # Ensure the user is logged in and has an id_token
-        if 'user' not in session or 'id_token' not in session['user']:
-            logging.error('User not logged in or missing id_token.')
-            return redirect(url_for('login'))
+    """Logout from Keycloak"""
+    if 'id_token' not in session:
+        return jsonify({'message': 'Not logged in'}), 400
 
-        # Get the id_token from the session
-        id_token = session['user']['id_token']
+    # Clear Flask session first
+    session.clear()
 
-        # Clear the session first
-        session.clear()
+    # Keycloak logout URL
+    logout_url = f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/logout"
+    params = {
+        'id_token_hint': session.get('id_token'),
+        'post_logout_redirect_uri': os.getenv('FRONTEND_URL', 'http://localhost:5173')
+    }
 
-        # Redirect to Keycloak's logout endpoint
-        end_session_endpoint = f'{keycloak_server_url}/realms/{realm_name}/protocol/openid-connect/logout'
-        redirect_uri = 'http://localhost:5000/login'  # Redirect to login page after logout
-
-        # Include the id_token_hint and post_logout_redirect_uri
-        params = {
-            'id_token_hint': id_token,
-            'post_logout_redirect_uri': redirect_uri
-        }
-        query = urlencode(params)
-        return redirect(f"{end_session_endpoint}?{query}")
-    except Exception as e:
-        logging.error(f'Failed to log out user: {e}')
-        return 'Failed to log out user. Please try again.'
+    return redirect(f"{logout_url}?{urlencode(params)}")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
