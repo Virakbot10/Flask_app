@@ -75,18 +75,28 @@ def logout():
     logging.debug('Attempting to log out user.')
 
     try:
-        
-        session.clear() # Clear session data upon successful logout
-        
+        # Ensure the user is logged in and has an id_token
+        if 'user' not in session or 'id_token' not in session['user']:
+            logging.error('User not logged in or missing id_token.')
+            return redirect(url_for('login'))
+
+        # Get the id_token from the session
+        id_token = session['user']['id_token']
+
+        # Clear the session first
+        session.clear()
+
+        # Redirect to Keycloak's logout endpoint
         end_session_endpoint = f'{keycloak_server_url}/realms/{realm_name}/protocol/openid-connect/logout'
-        redirect_uri = 'http://localhost:5000/login'
+        redirect_uri = 'http://localhost:5000/login'  # Redirect to login page after logout
 
-        # Optionally add 'id_token_hint' to request to invalidate sessoin at IdP
-        response = requests.get(f"{end_session_endpoint}?redirect_uri={redirect_uri}", timeout=5)
-
-        logging.debug('Session cleared. Redirecting to login page.')
-
-        return redirect(url_for('login'))
+        # Include the id_token_hint and post_logout_redirect_uri
+        params = {
+            'id_token_hint': id_token,
+            'post_logout_redirect_uri': redirect_uri
+        }
+        query = urlencode(params)
+        return redirect(f"{end_session_endpoint}?{query}")
     except Exception as e:
         logging.error(f'Failed to log out user: {e}')
         return 'Failed to log out user. Please try again.'
