@@ -6,20 +6,27 @@
 export default {
   name: 'App',
   mounted() {
-    this.checkAuth()
+    this.checkAuthStatus();
   },
   methods: {
-    async checkAuth() {
+    async checkAuthStatus() {
       try {
         const response = await fetch('http://localhost:5000/api/user', {
           credentials: 'include'
-        })
+        });
         
         if (response.ok) {
-          this.$store.commit('setUser', await response.json())
+          const data = await response.json();
+          if (data.authenticated) {
+            // User is authenticated, redirect to home
+            this.$router.push('/');
+          } else {
+            // User is not authenticated, redirect to login
+            this.$router.push('/login');
+          }
         }
       } catch (error) {
-        console.error('Auth check failed:', error)
+        console.error('Authentication check failed:', error);
       }
     }
   }
