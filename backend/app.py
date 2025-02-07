@@ -1,74 +1,71 @@
-from flask import Flask, redirect, session, url_for, jsonify, request
-from flask_oidc import OpenIDConnect
-import os
+from flask import Flask, render_template, url_for, session, abort, redirect
+from authlib.integrations.flask_client import OAuth
+import json
+from urllib.parse import urlencode, quote_plus
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'supersecretkey')
 
-# Configure OIDC
-app.config.update({
-    'OIDC_CLIENT_SECRETS': 'client_secrets.json',
-    'OIDC_SCOPES': ['openid', 'profile', 'email'],
-    'OIDC_CALLBACK_ROUTE': '/oidc/callback',
-    'OVERWRITE_REDIRECT_URI': os.getenv('FRONTEND_URL', 'http://localhost:5173'),
-    'OIDC_INTROSPECTION_AUTH_METHOD': 'client_secret_post',
-    'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', 'supersecretkey'),
-    'PERMANENT_SESSION_LIFETIME': 3600,
-    'SESSION_COOKIE_SECURE': False,  # Set to True in production
-    'SESSION_COOKIE_SAMESITE': 'Lax',
-    'SESSION_COOKIE_HTTPONLY': True
-})
+appConf = {
+    "OAUTH2_CLIENT_ID": "flask_app",
+    "OAUTH2_CLIENT_SECRET": "aA33IdzG6hkafnzIGrpQxgoFm8qKe6Vd",
+    "OAUTH2_CLIENT_ISSUER": "http://localhost:8080/realms/myrealm",
+    "OAUTH2_CLIENT_LOGOUT_URI": "http://localhost:8080/realms/myrealm/protocol/openid-connect/logout",
+    "FLASK_SECRET": "your_secret",
+    "FLASK_PORT": 5000
+}
 
-oidc = OpenIDConnect(app)
+app.secret_key = appConf.get("FLASK_SECRET")
 
-@app.route('/api/login')
+oauth = OAuth(app)
+myApp = oauth.register(
+    name = "myApp",
+    client_id = appConf.get("OAUTH2_CLIENT_ID"),
+    client_secret = appConf.get("OAUTH2_CLIENT_SECRET"),
+    client_kwargs={
+        "scope": "openid profile email",
+        'code_challenge_method': 'S256' # enable PKCE
+    },
+    server_metadata_url=f'{appConf.get('OAUTH2_CLIENT_ISSUER')}/.well-known/openid-configuration',
+)
+
+@app.route('/')
+def home():
+    return render_template("home.html", session=session.get('user'),
+                           pretty=json.dumps(session.get('user'), indent=4))
+
+@app.route('/callback')
+def callback():
+    token = oauth.myApp.authorize_access_token()
+    session['user'] = token
+    return redirect(url_for("home"))
+
+
+@app.route('/login')
 def login():
-    """Initiate Keycloak login flow"""
-    if oidc.user_loggedin:
-        # If already logged in, redirect to the frontend
-        return redirect(os.getenv('FRONTEND_URL', 'http://localhost:5173'))
-    
-    # Redirect to Keycloak login page
-    return oidc.redirect_to_auth_server(url_for('oidc_callback', _external=True))
+    if "user" in session:
+        abort(404)
+    return oauth.myApp.authorize_redirect(redirect_uri=url_for('callback', _external=True))
 
-@app.route('/oidc/callback')
-@oidc.require_login
-def oidc_callback():
-    """Keycloak OIDC callback handler"""
-    # Store user info in session
-    session['user'] = {
-        'username': oidc.user_getfield('preferred_username'),
-        'email': oidc.user_getfield('email')
-    }
-    # Redirect to the frontend after successful login
-    return redirect(os.getenv('FRONTEND_URL', 'http://localhost:5173'))
+@app.route('/loggedOut')
+def loggedOut():
+    return redirect(url_for("home"))
 
-@app.route('/api/user')
-def user_info():
-    """Get current user information"""
-    if not oidc.user_loggedin:
-        return jsonify({'authenticated': False}), 200
-    
-    return jsonify({
-        'authenticated': True,
-        'username': session.get('user', {}).get('username'),
-        'email': session.get('user', {}).get('email')
-    })
-
-@app.route('/api/logout')
+@app.route('/logout')
 def logout():
-    """Logout from Keycloak"""
-    if oidc.user_loggedin:
-        post_logout_uri = os.getenv('FRONTEND_URL', 'http://localhost:5173')
-        logout_url = (
-            f"{oidc.client_secrets['issuer']}/protocol/openid-connect/logout"
-            f"?post_logout_redirect_uri={post_logout_uri}"
-            f"&id_token_hint={oidc.get_id_token()}"
-        )
-        oidc.logout()
-        session.clear()
-        return redirect(logout_url)
-    return redirect(url_for('user_info'))
+    id_token = session['user']['id_token']
+    session.clear()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    return redirect(
+        appConf.get('OAUTH2_CLIENT_ISSUER')
+        + "/protocol/openid-connect/logout?"
+        + urlencode(
+            {
+                "post_logout_redirect_uri": url_for('loggedOut', _external=True),
+                "id_token_hint": id_token
+            },
+            quote_via=quote_plus,
+        )
+    )
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
