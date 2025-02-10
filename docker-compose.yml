@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - OAUTH2_CLIENT_ISSUER=http://localhost:8080/realms/myrealm
+    ports:
+      - "5000:5000"
+    depends_on:
+      - keycloak
+
+  frontend:
+    image: node:20 # Use Node.js 20 or later
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "8081:8081"
+    command: sh -c "npm install && npm run dev"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: start-dev
+    ports:
+      - "8080:8080"
