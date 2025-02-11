@@ -1,29 +1,32 @@
 <template>
-  <div>
+  <div class="login">
     <h1>Login</h1>
     <button @click="login">Login with Keycloak</button>
   </div>
 </template>
 
 <script>
-import axios from 'axios';
-
 export default {
-  name: 'LoginView',
   methods: {
-    async login() {
-      const backendUrl = 'http://localhost:5000/login';
-      try {
-        const response = await axios.get(backendUrl);
-        if (response.data.access_token) {
-          localStorage.setItem('access_token', response.data.access_token);
-          localStorage.setItem('id_token', response.data.id_token);
-          this.$router.push('/userinfo');
-        }
-      } catch (error) {
-        console.error('Login failed:', error);
-      }
+    login() {
+      window.location.href = 'http://localhost:5000/login';
     }
   }
 }
 </script>
+
+<style scoped>
+.login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+</style>

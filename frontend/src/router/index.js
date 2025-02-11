@@ -1,42 +1,24 @@
 import Vue from 'vue';
-import Router from 'vue-router';
-import Login from '@/components/LoginView.vue';
-import Logout from '@/components/LogoutView.vue';
-import UserInfo from '@/components/UserInfo.vue';
+import App from '../App.vue';
+import axios from 'axios';
 
-Vue.use(Router);
+Vue.config.productionTip = false;
 
-const router = new Router({
-  mode: 'history',
-  routes: [
-    {
-      path: '/',
-      name: 'Login',
-      component: Login
-    },
-    {
-      path: '/logout',
-      name: 'Logout',
-      component: Logout
-    },
-    {
-      path: '/userinfo',
-      name: 'UserInfo',
-      component: UserInfo,
-      meta: { requiresAuth: true }
-    }
-  ]
-});
+// Set up Axios to interact with Flask API
+axios.defaults.baseURL = 'http://localhost:5000/api';  // Flask backend
+axios.defaults.withCredentials = true;  // Allow credentials (cookies) to be sent
 
-router.beforeEach((to, from, next) => {
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-  const token = localStorage.getItem('access_token');
-
-  if (requiresAuth && !token) {
-    next({ path: '/', query: { redirect: to.fullPath } });
-  } else {
-    next();
+// Intercept requests to add Authorization header with token
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('access_token');  // Access token stored in localStorage
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
   }
+  return config;
+}, error => {
+  return Promise.reject(error);
 });
 
-export default router;
+new Vue({
+  render: h => h(App)
+}).$mount('#app');

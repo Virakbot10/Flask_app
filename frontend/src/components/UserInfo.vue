@@ -1,41 +1,57 @@
 <template>
-    <div>
-      <h1>User Info</h1>
-      <pre>{{ userInfo }}</pre>
+  <div class="userinfo">
+    <h1>User Info</h1>
+    <div v-if="user">
+      <p><strong>Name:</strong> {{ user.name }}</p>
+      <p><strong>Email:</strong> {{ user.email }}</p>
       <button @click="logout">Logout</button>
     </div>
-  </template>
-  
-  <script>
-  import axios from 'axios';
-  
-  export default {
-    name: 'UserInfo',
-    data() {
-      return {
-        userInfo: null
-      };
-    },
-    async mounted() {
-      const accessToken = localStorage.getItem('access_token');
-      if (accessToken) {
-        try {
-          const response = await axios.get('http://localhost:5000/user', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          });
-          this.userInfo = response.data.user;
-        } catch (error) {
-          console.error('Failed to fetch user info:', error);
-        }
-      } else {
-        this.$router.push('/login');
+    <div v-else>
+      <p>Loading...</p>
+    </div>
+  </div>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+  data() {
+    return {
+      user: null
+    };
+  },
+  created() {
+    this.fetchUserInfo();
+  },
+  methods: {
+    async fetchUserInfo() {
+      try {
+        const response = await axios.get('/api/userinfo');
+        this.user = response.data;
+      } catch (error) {
+        console.error('Error fetching user info:', error);
       }
     },
-    methods: {
-      logout() {
-        this.$router.push('/logout');
-      }
+    logout() {
+      window.location.href = 'http://localhost:5000/logout';
     }
   }
-  </script>
-  
+}
+</script>
+
+<style scoped>
+.userinfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+</style>
