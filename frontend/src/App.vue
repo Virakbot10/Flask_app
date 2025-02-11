@@ -9,7 +9,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 
 export default {
   data() {
@@ -23,15 +23,12 @@ export default {
   methods: {
     async fetchUserInfo() {
       try {
-        const response = await axios.get('/api/userinfo');
+        const response = await apiClient.get('/api/userinfo');
         this.user = response.data;
       } catch (error) {
         console.error('Error fetching user info:', error);
-        this.login();
+        this.user = null;
       }
-    },
-    login() {
-      window.location.href = 'http://localhost:5000/login';
     },
     logout() {
       window.location.href = 'http://localhost:5000/logout';

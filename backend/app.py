@@ -3,6 +3,7 @@ from authlib.integrations.flask_client import OAuth
 from flask import Flask, abort, redirect, render_template, session, url_for, jsonify
 from flask_cors import CORS
 from flask_session import Session
+import requests
 
 appConf = {
     "OAUTH2_CLIENT_ID": "flask_app",
@@ -30,6 +31,21 @@ oauth.register(
     },
     server_metadata_url=f'{appConf.get("OAUTH2_ISSUER")}/.well-known/openid-configuration',
 )
+
+def is_token_active(access_token):
+    introspection_endpoint = oauth.myApp.server_metadata.get("introspection_endpoint")
+    if not introspection_endpoint:
+        return True
+    data = {
+        'token': access_token,
+        'client_id': appConf.get("OAUTH2_CLIENT_ID"),
+        'client_secret': appConf.get("OAUTH2_CLIENT_SECRET")
+    }
+    response = requests.post(introspection_endpoint, data=data)
+    if response.status_code == 200:
+        result = response.json()
+        return result.get("active", False)
+    return False
 
 @app.route("/")
 def home():
@@ -87,7 +103,12 @@ def logout():
 @app.route("/api/userinfo")
 def userinfo():
     if 'user' in session:
-        return jsonify(session["user"])
+        token = session['user']
+        access_token = token["access_token"]
+        if not is_token_active(access_token):
+            session.clear()
+            return jsonify({"error": "Session expired or token revoked"}), 401
+        return jsonify(token)
     else:
         return jsonify({"error": "Not logged in"}), 401
     
