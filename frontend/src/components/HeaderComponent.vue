@@ -16,7 +16,7 @@
 </template>
 
 <script>
-import apiClient from '../../utils/apiClient.js';
+import apiClient from '@/utils/apiClient.js';
 
 export default {
   data() {

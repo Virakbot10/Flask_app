@@ -7,7 +7,7 @@ import requests
 
 appConf = {
     "OAUTH2_CLIENT_ID": "flask_app",
-    "OAUTH2_CLIENT_SECRET": "q9SSH1b8qhIlcLrD0q5TS3rvz90diKRB",
+    "OAUTH2_CLIENT_SECRET": "8QqPTy9PKvTI6WB3FVy7sDiZQ8eRYHX9",
     "OAUTH2_ISSUER": "http://localhost:8080/realms/myrealm",
     "FLASK_SECRET": "ALongRandomlyGeneratedString",
     "FLASK_PORT": 5000
