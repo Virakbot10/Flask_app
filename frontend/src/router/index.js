@@ -1,24 +1,31 @@
-import Vue from 'vue';
-import App from '../App.vue';
-import axios from 'axios';
+// src/router/index.js
+import { createRouter, createWebHistory } from 'vue-router';
+import LandingPage from '@/components/LandingPage.vue';
+// import AboutPage from '@/components/AboutPage.vue'; // example additional page
 
-Vue.config.productionTip = false;
+const routes = [
+  {
+    path: '/',
+    name: 'Landing',
+    component: LandingPage
+  },
+  // {
+  //   path: '/about',
+  //   name: 'About',
+  //   component: AboutPage
+  // }
+];
 
-// Set up Axios to interact with Flask API
-axios.defaults.baseURL = 'http://localhost:5000/api';  // Flask backend
-axios.defaults.withCredentials = true;  // Allow credentials (cookies) to be sent
-
-// Intercept requests to add Authorization header with token
-axios.interceptors.request.use(config => {
-  const token = localStorage.getItem('access_token');  // Access token stored in localStorage
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return {...savedPosition, behavior: 'smooth'};
+    } else {
+      return {top: 0, behavior: 'smooth'};
+    }
   }
-  return config;
-}, error => {
-  return Promise.reject(error);
 });
 
-new Vue({
-  render: h => h(App)
-}).$mount('#app');
+export default router;

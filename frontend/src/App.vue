@@ -1,59 +1,25 @@
 <template>
   <div id="app">
-    <header>
-      <h1>Welcome to the App</h1>
-      <p v-if="user">Logged in as: {{ user.userinfo.name }}</p>
-      <button v-if="user" @click="logout">Logout</button>
-    </header>
+    <!-- Optionally, you can include a global header or navigation -->
+    <HeaderComponent />
+    <!-- This is where the routed components will be rendered -->
+    <router-view />
+    <FooterComponent />
   </div>
 </template>
 
 <script>
-import apiClient from '../utils/apiClient';
+import HeaderComponent from '@/components/HeaderComponent.vue';
+import FooterComponent from '@/components/FooterComponent.vue';
 
 export default {
-  data() {
-    return {
-      user: null
-    };
-  },
-  async created() {
-    await this.fetchUserInfo();
-  },
-  methods: {
-    async fetchUserInfo() {
-      try {
-        const response = await apiClient.get('/api/userinfo');
-        this.user = response.data;
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-        this.user = null;
-      }
-    },
-    logout() {
-      window.location.href = 'http://localhost:5000/logout';
-    }
+  components: {
+    HeaderComponent,
+    FooterComponent
   }
 }
 </script>
 
 <style scoped>
-#app {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  text-align: center;
-}
-
-header {
-  margin-bottom: 2rem;
-}
-
-button {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-}
+/* your global app styles */
 </style>
