@@ -12,6 +12,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - my_network
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
@@ -19,6 +21,7 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_THEME: mytheme
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
@@ -28,23 +31,29 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
+    networks:
+      - my_network
+    volumes:
+      - ./keycloak/mytheme:/opt/keycloak/themes/mytheme
 
   backend:
     container_name: backend
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - OAUTH2_CLIENT_ISSUER=http://localhost:8080/realms/myrealm
+      - OAUTH2_PROVIDER_URL=http://keycloak:8080/realms/myrealm
     ports:
       - "5000:5000"
     depends_on:
       - keycloak
       - postgres
+    networks:
+      - my_network
 
   frontend:
     container_name: frontend
-    image: node:20 # Use Node.js 20 or later
+    image: node:20
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -57,6 +66,12 @@ services:
       - backend
       - keycloak
       - postgres
+    networks:
+      - my_network
 
 volumes:
   postgres_data:
+
+networks:
+  my_network:
+    driver: bridge
